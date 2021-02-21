@@ -1,0 +1,40 @@
+# VSS data points for vss host monitoring  
+- Vehicle:
+  type: branch
+
+- Vehicle.Private:
+  type: branch
+
+- Vehicle.Private.Systemstats:
+  type: branch
+
+
+- Vehicle.Private.Systemstats.Uptime:
+  type: sensor
+  datatype: uint64
+  description: "Uptime of the system"
+
+- Vehicle.Private.Systemstats.Load:
+  type: sensor
+  datatype: string
+  description: "System load in {loadavg_1m, loadavg_5m, loadavg_15m}"
+
+- Vehicle.Private.Systemstats.Cpuload:
+  type: sensor
+  datatype: uint8
+  description: "Total CPU load in % "
+
+- Vehicle.Private.Systemstats.Cputemperature:
+  type: sensor
+  datatype: uint8
+  description: "CPU temperature if available "
+
+- Vehicle.Private.Systemstats.Cputemperature:
+  type: sensor
+  datatype: uint8
+  description: "CPU temperature if available "
+
+- Vehicle.Private.Systemstats.Diskfree:
+  type: sensor
+  datatype: uint64
+  description: "Free space in root fs in bytes"

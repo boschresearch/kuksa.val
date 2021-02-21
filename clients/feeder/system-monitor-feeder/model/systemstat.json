@@ -1,0 +1,50 @@
+{
+  "Vehicle": {
+    "type": "branch",
+    "uuid": "ccc825f94139544dbb5f4bfd033bece6",
+    "children": {
+      "Private": {
+        "type": "branch",
+        "uuid": "4161866b048a5b76aa3124dec82e0260",
+        "children": {
+          "Systemstats": {
+            "type": "branch",
+            "uuid": "5eb3bcf03d8c5a32bfa5c0d512848998",
+            "children": {
+              "Uptime": {
+                "type": "sensor",
+                "datatype": "uint64",
+                "description": "Uptime of the system",
+                "uuid": "3db413ca1b995780a1744b2110b33fd6"
+              },
+              "Load": {
+                "type": "sensor",
+                "datatype": "string",
+                "description": "System load in {loadavg_1m, loadavg_5m, loadavg_15m}",
+                "uuid": "9871b4389f6a5211abe25c0c87822bec"
+              },
+              "Cpuload": {
+                "type": "sensor",
+                "datatype": "uint8",
+                "description": "Total CPU load in % ",
+                "uuid": "5066a695e4505bda89cab0ab8cc1ccbf"
+              },
+              "Cputemperature": {
+                "type": "sensor",
+                "datatype": "uint8",
+                "description": "CPU temperature if available ",
+                "uuid": "fdae6153320d526f82fe4dee696d8239"
+              },
+              "Diskfree": {
+                "type": "sensor",
+                "datatype": "uint64",
+                "description": "Free space in root fs in bytes",
+                "uuid": "bc1bb1cb5fa658bdad85ae9a0ef5bf6a"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

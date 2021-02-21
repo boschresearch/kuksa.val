@@ -1,0 +1,25 @@
+name: "VSS System Monitor Feeder" 
+version: "0.0.1"
+author: "Sebastian Schildt <sebastian.schildt@de.bosch.com>"
+about: "Feed system health statistics to KUKSA.val"
+args:
+    - token:
+        short: t
+        long: token
+        value_name: JWT-TOKEN-FILE
+        default_value: "token.json.token"
+        help: "JWT token file for VSS server"
+        takes_value: true
+    - host:
+        short: h
+        long: host
+        value_name: KUKSA.VAL http://HOST:PORT"
+        default_value: "http://localhost:8090"
+        help: "VSS server"
+        takes_value: true
+        
+    - debug:
+        long: debug
+        takes_value: false
+        help: Enables debug output
+   
