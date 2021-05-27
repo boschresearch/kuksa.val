@@ -15,4 +15,4 @@ UIspeed_signed257:
 DIgear118:
   minupdatedelay: 100
   targets:
-    - Vehicle.Drivetrain.Transmission.Gear
+    - Vehicle.Powertrain.Transmission.Gear
