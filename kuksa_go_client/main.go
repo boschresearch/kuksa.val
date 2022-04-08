@@ -5,7 +5,7 @@ import (
    "time"
    "strconv"
 
-   "kuksa.val/kuksa_go_client/kuksa_viss"
+   "github.com/boschresearch/kuksa.val/kuksa_go_client/kuksa_viss"
 )
 
 func main() {
