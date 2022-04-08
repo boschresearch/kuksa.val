@@ -1,4 +1,4 @@
-module kuksa.val/kuksa_go_client
+module github.com/boschresearch/kuksa.val/kuksa_go_client
 
 go 1.18
 
