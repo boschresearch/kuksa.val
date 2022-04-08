@@ -4,12 +4,11 @@ import (
     "net/url"
     "log"
     "os"
-    "encoding/json"
     "errors"
-    "time"
     "crypto/tls"
     "crypto/x509"
     "io/ioutil"
+    "sync"
 
     "github.com/gorilla/websocket"
     "github.com/google/uuid"
@@ -19,47 +18,16 @@ import (
 type KuksaClientComm struct {
      Config *KuksaVISSClientConfig
      connSocket *websocket.Conn
+     sendChannel chan KuksaValRequest
+     requestState map[string]chan objx.Map
+     sendAndRecvMutex sync.Mutex
 }
 
 type KuksaValRequest struct {
-     RequestId string `json:"requestId"`
-     Action    string `json:"action"`
-     Token     string `json:"tokens,omitempty"` 
-     Path      string `json:"path,omitempty"` 
-     Value     string `json:"value,omitempty"`
-     Metadata   string `json:"metadata,omitempty"`
+     Request       objx.Map
+     RespChannel   chan objx.Map
 }
 
-// Function to send and receive Kuksa Requests over Websocket
-func (cc *KuksaClientComm) sendAndRecv(reqJson []byte) ([]byte, error) {
-    resultChannel := make(chan []byte)
-
-    // Send the request
-    go func() {
-        err := cc.connSocket.WriteMessage(websocket.TextMessage, reqJson)
-        if err != nil {
-            log.Fatal("Sending Error: ", err)
-        }
-    }()
-
-    // Receive the response
-    go func() {
-        _, message, err := cc.connSocket.ReadMessage()
-        if err != nil {
-            log.Fatal("Receive Error:", err)
-        }
-        resultChannel<-message
-    }()
-
-    // Wait for finishing or timeout
-    select {
-        case result:= <-resultChannel:
-            return result, nil
-        case <-time.After(3 * time.Second):
-            return nil, errors.New("Communication Timeout")
-    }
-
-}
 
 // Function to connect to kuksa.val
 func (cc *KuksaClientComm) ConnectToKuksaValServerWs() error {
@@ -105,6 +73,42 @@ func (cc *KuksaClientComm) ConnectToKuksaValServerWs() error {
         }
         log.Printf(string(cc.connSocket.LocalAddr().String()))
     }
+
+    // Create request state handling
+    cc.requestState = make(map [string] chan objx.Map)
+
+    // Create send sub routine
+    cc.sendChannel = make(chan KuksaValRequest)
+    go func() {
+        for {
+            req := <-cc.sendChannel
+            reqString, _ := req.Request.JSON()
+            cc.connSocket.WriteMessage(websocket.TextMessage, []byte(reqString))
+
+            // Store Request ID for request state handling
+            cc.sendAndRecvMutex.Lock()
+            cc.requestState[req.Request.Get("requestId").String()]=req.RespChannel
+            cc.sendAndRecvMutex.Unlock()
+        }
+    }()
+
+    // Create receive sub routine
+    go func() {
+        for {
+            _, respString, _ := cc.connSocket.ReadMessage()
+            resp, _ := objx.FromJSON(string(respString))
+
+            // Get the correct channel to send back response
+            cc.sendAndRecvMutex.Lock()
+            respChannel := cc.requestState[resp.Get("requestId").String()]
+            delete(cc.requestState, resp.Get("requestId").String())
+            cc.sendAndRecvMutex.Unlock()
+
+            respChannel<-resp
+       }
+
+    }()
+
     return nil
 }
 
@@ -114,18 +118,25 @@ func (cc *KuksaClientComm) Close() error {
     return nil
 }
 
+
 // Function to get value from VSS tree
 func (cc *KuksaClientComm) GetValueFromKuksaValServer(path string) (string, error) {
 
-    req := KuksaValRequest{RequestId: uuid.New().String(), Action: "get", Path: path}
-    reqJson, _ := json.Marshal(req)
-    var resultJson []byte
-    resultJson, _ = cc.sendAndRecv(reqJson)
-    parsedResult, _ := objx.FromJSON(string(resultJson))
-    if errStr:=parsedResult.Get("error").String(); errStr != "" {
-        return "",errors.New(errStr)
+    // Create new KuksaValRequest
+    respChannel := make(chan objx.Map)
+    req := objx.New(make (map [string] interface{}))
+    req.Set("requestId", uuid.New().String())
+    req.Set("action", "get")
+    req.Set("path",  path)
+    kuksaReq := KuksaValRequest{Request: req, RespChannel: respChannel}
+
+    cc.sendChannel <- kuksaReq
+    response := <-respChannel
+    if response.Has("error") {
+        errString, _ := response.Get("error").ObjxMap().JSON()
+        return "", errors.New(errString)
     }
-    valStr:=parsedResult.Get("data.dp.value").String() 
+    valStr:=response.Get("data.dp.value").String() 
 
     return valStr, nil
 }
@@ -134,15 +145,21 @@ func (cc *KuksaClientComm) GetValueFromKuksaValServer(path string) (string, erro
 // Function to set value from VSS tree
 func (cc *KuksaClientComm) SetValueFromKuksaValServer(path string, value string) error {
 
-    req := KuksaValRequest{RequestId: uuid.New().String(), Action: "set", Path: path, Value: value}
-    reqJson, _ := json.Marshal(req)
-    var resultJson []byte
-    resultJson, _ = cc.sendAndRecv(reqJson)
-    parsedResult, _ := objx.FromJSON(string(resultJson))
-    if errStr:=parsedResult.Get("error").String(); errStr != "" {
-        return errors.New(errStr)
-    }
+    // Create new KuksaValRequest
+    respChannel := make(chan objx.Map)
+    req := objx.New(make (map [string] interface{}))
+    req.Set("requestId", uuid.New().String())
+    req.Set("action", "set")
+    req.Set("path",  path)
+    req.Set("value",  value)
+    kuksaReq := KuksaValRequest{Request: req, RespChannel: respChannel}
 
+    cc.sendChannel <- kuksaReq
+    response := <-respChannel
+    if response.Has("error") {
+        errString, _ := response.Get("error").ObjxMap().JSON()
+        return errors.New(errString)
+    }
     return nil
 }
 
@@ -157,44 +174,41 @@ func (cc *KuksaClientComm) AuthorizeKuksaValServerConn() error {
         return err
     }
 
-    // Create the authorization request 
-    req := KuksaValRequest{RequestId: uuid.New().String(), Action: "authorize", Token: string(tokenByteString)}
-    reqJson, _ := json.Marshal(req)
-    var resultJson []byte
-    resultJson, _ = cc.sendAndRecv(reqJson)
-    parsedResult, _ := objx.FromJSON(string(resultJson))
-    if errStr:=parsedResult.Get("error").String(); errStr != "" {
-        return errors.New(errStr)
-    }
+    // Create new KuksaValRequest
+    respChannel := make(chan objx.Map)
+    req := objx.New(make (map [string] interface{}))
+    req.Set("requestId", uuid.New().String())
+    req.Set("action", "authorize")
+    req.Set("tokens",  string(tokenByteString))
+    kuksaReq := KuksaValRequest{Request: req, RespChannel: respChannel}
 
+    cc.sendChannel <- kuksaReq
+    response := <-respChannel
+    if response.Has("error") {
+        errString, _ := response.Get("error").ObjxMap().JSON()
+        return errors.New(errString)
+    }
     return nil
 }
 
 // Function to get metadata from kuksa.val server
 func (cc *KuksaClientComm) GetMetadataFromKuksaValServer(path string) (string, error) {
 
-    req := KuksaValRequest{RequestId: uuid.New().String(), Action: "getMetaData", Path: path}
-    reqJson, _ := json.Marshal(req)
-    var resultJson []byte
-    resultJson, _ = cc.sendAndRecv(reqJson)
-    parsedResult, _ := objx.FromJSON(string(resultJson))
-    if errStr:=parsedResult.Get("error").String(); errStr != "" {
-        return "",errors.New(errStr)
+    // Create new KuksaValRequest
+    respChannel := make(chan objx.Map)
+    req := objx.New(make (map [string] interface{}))
+    req.Set("requestId", uuid.New().String())
+    req.Set("action", "getMetaData")
+    req.Set("path",  path)
+    kuksaReq := KuksaValRequest{Request: req, RespChannel: respChannel}
+
+    cc.sendChannel <- kuksaReq
+    response := <-respChannel
+    if response.Has("error") {
+        errString, _ := response.Get("error").ObjxMap().JSON()
+        return "", errors.New(errString)
     }
-    valStr, _:=parsedResult.Get("metadata").ObjxMap().JSON()
+    valStr, _:=response.Get("metadata").ObjxMap().JSON() 
 
     return valStr, nil
-}
-
-// Function to update metadata at kuksa.val server
-func (cc *KuksaClientComm) UpdateMetadatAtKuksaValServer(path string, metadata string) error {
-   
-    req := KuksaValRequest{RequestId: uuid.New().String(), Action: "updateMetaData", Path: path, Metadata: metadata}
-    reqJson, _ := json.Marshal(req)
-    var resultJson []byte
-    resultJson, _ = cc.sendAndRecv(reqJson)
-    log.Printf(string(resultJson))
-
-    return nil
-
 }
